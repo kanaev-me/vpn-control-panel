@@ -29,10 +29,11 @@ class CleanServerInstallerTests(unittest.TestCase):
 
     def test_entrypoint_verifies_real_login_and_protected_pages(self):
         text = ENTRYPOINT.read_text(encoding="utf-8")
-        self.assertIn('base + "/login"', text)
+        self.assertIn('request("POST", "/login"', text)
         self.assertIn('("/access", "Доступ")', text)
         self.assertIn('("/channel", "Канал")', text)
-        self.assertIn('base + "/api/me"', text)
+        self.assertIn('request("GET", "/api/me"', text)
+        self.assertIn('cookie.startswith("vpn_vpn_session=")', text)
         self.assertIn("administrator_login=ok", text)
         self.assertIn("protected_pages=ok", text)
         self.assertIn("dashboard_defaults=ok", text)
