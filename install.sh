@@ -63,40 +63,63 @@ health_host() {
 verify_installed_login() {
   local host="$1" port="$2" username="$3" password_file="$4" app_name="$5"
   python3 - "$host" "$port" "$username" "$password_file" "$app_name" <<'PY'
-from http.cookiejar import CookieJar
+import http.client
 import json
 from pathlib import Path
 import sys
 from urllib.parse import urlencode
-from urllib.request import HTTPCookieProcessor, Request, build_opener
 
-host, port, username, password_path, app_name = sys.argv[1:]
-base = f"http://{host}:{port}"
+host, port_text, username, password_path, app_name = sys.argv[1:]
+port = int(port_text)
 password = Path(password_path).read_text(encoding="utf-8").rstrip("\r\n")
-opener = build_opener(HTTPCookieProcessor(CookieJar()))
-request = Request(
-    base + "/login",
-    data=urlencode({"username": username, "password": password}).encode("utf-8"),
-    method="POST",
-)
-with opener.open(request, timeout=20) as response:
-    home = response.read().decode("utf-8", "replace")
-    if response.status != 200 or app_name not in home or 'href="/access"' not in home:
-        raise RuntimeError("administrator login did not open the protected home page")
-    for forbidden in ("panel unknown", "caddy unknown", "ipsec unknown"):
-        if forbidden in home:
-            raise RuntimeError(f"protected home contains invalid service state: {forbidden}")
+
+
+def request(method: str, path: str, *, body: bytes | None = None, cookie: str = ""):
+    connection = http.client.HTTPConnection(host, port, timeout=20)
+    headers = {}
+    if body is not None:
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        headers["Content-Length"] = str(len(body))
+    if cookie:
+        headers["Cookie"] = cookie
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        payload = response.read()
+        return response.status, response.getheaders(), payload
+    finally:
+        connection.close()
+
+
+login_body = urlencode({"username": username, "password": password}).encode("utf-8")
+status, headers, _body = request("POST", "/login", body=login_body)
+header_map = {key.casefold(): value for key, value in headers}
+if status != 303 or header_map.get("location") != "/":
+    raise RuntimeError(f"administrator login failed: HTTP {status}")
+
+set_cookie = header_map.get("set-cookie", "")
+cookie = set_cookie.split(";", 1)[0].strip()
+if not cookie.startswith("vpn_vpn_session=") or len(cookie.split("=", 1)[1]) < 32:
+    raise RuntimeError("administrator login did not return a valid secure session cookie")
+
+status, _headers, payload = request("GET", "/", cookie=cookie)
+home = payload.decode("utf-8", "replace")
+if status != 200 or app_name not in home or 'href="/access"' not in home:
+    raise RuntimeError("administrator login did not open the protected home page")
+for forbidden in ("panel unknown", "caddy unknown", "ipsec unknown"):
+    if forbidden in home:
+        raise RuntimeError(f"protected home contains invalid service state: {forbidden}")
 
 for path, marker in (("/access", "Доступ"), ("/channel", "Канал")):
-    with opener.open(base + path, timeout=20) as response:
-        body = response.read().decode("utf-8", "replace")
-        if response.status != 200 or marker not in body:
-            raise RuntimeError(f"protected page verification failed: {path}")
+    status, _headers, payload = request("GET", path, cookie=cookie)
+    body = payload.decode("utf-8", "replace")
+    if status != 200 or marker not in body:
+        raise RuntimeError(f"protected page verification failed: {path}")
 
-with opener.open(base + "/api/me", timeout=20) as response:
-    payload = json.loads(response.read().decode("utf-8"))
-    if response.status != 200 or payload.get("username") != username:
-        raise RuntimeError("authenticated identity verification failed")
+status, _headers, payload = request("GET", "/api/me", cookie=cookie)
+identity = json.loads(payload.decode("utf-8"))
+if status != 200 or identity.get("username") != username:
+    raise RuntimeError("authenticated identity verification failed")
 
 print("administrator_login=ok")
 print("protected_pages=ok")
