@@ -9,7 +9,6 @@ import re
 import shlex
 import shutil
 import sys
-from typing import Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE_LAYOUT = ROOT / "config" / "source-layout.env.example"
@@ -89,40 +88,37 @@ def env_lines(config: RuntimeConfig) -> list[str]:
     return [f"{key}={shlex.quote(value)}" for key, value in pairs]
 
 
-def _replace_source_brand(text: str, config: RuntimeConfig, source: Mapping[str, str]) -> str:
-    if config.service_prefix == source["VPN_SOURCE_SERVICE_PREFIX"]:
+def replace_literals_once(text: str, replacements: dict[str, str]) -> str:
+    """Replace source literals without re-processing replacement values.
+
+    Sequential ``str.replace`` calls can corrupt a rendered value when the target
+    contains the source token. For example, replacing ``/opt/vpn-panel`` with
+    ``/opt/nuova-vpn-panel`` and then replacing ``vpn-`` would add ``nuova-`` a
+    second time. A single regex pass only matches literals from the original text.
+    """
+
+    filtered = {old: new for old, new in replacements.items() if old and old != new}
+    if not filtered:
         return text
-
-    source_brand = source["VPN_SOURCE_APP_NAME"].split()[0]
-    if not source_brand:
-        return text
-
-    def replacement(match: re.Match[str]) -> str:
-        value = match.group(0)
-        if value.isupper() or value[:1].isupper():
-            return config.brand_name
-        return config.service_prefix
-
-    return re.sub(re.escape(source_brand), replacement, text, flags=re.IGNORECASE)
+    pattern = re.compile("|".join(re.escape(old) for old in sorted(filtered, key=len, reverse=True)))
+    return pattern.sub(lambda match: filtered[match.group(0)], text)
 
 
-def render_unit(text: str, config: RuntimeConfig, source: Mapping[str, str]) -> str:
-    replacements = (
-        (source["VPN_SOURCE_APP_DIR"], str(config.app_dir)),
-        (source["VPN_SOURCE_STATUS_DIR"], str(config.status_dir)),
-        (source["VPN_SOURCE_INSTRUCTIONS_DIR"], str(config.instructions_dir)),
-        (source["VPN_SOURCE_CACHE_DIR"], str(config.cache_dir)),
-        (f'{source["VPN_SOURCE_SERVICE_PREFIX"]}-', f"{config.service_prefix}-"),
-        (source["VPN_SOURCE_APP_NAME"], config.app_name),
-    )
-    for old, new in replacements:
-        text = text.replace(old, new)
-    return _replace_source_brand(text, config, source)
+def render_unit(text: str, config: RuntimeConfig, source: dict[str, str]) -> str:
+    replacements = {
+        source["VPN_SOURCE_APP_DIR"]: str(config.app_dir),
+        source["VPN_SOURCE_STATUS_DIR"]: str(config.status_dir),
+        source["VPN_SOURCE_INSTRUCTIONS_DIR"]: str(config.instructions_dir),
+        source["VPN_SOURCE_CACHE_DIR"]: str(config.cache_dir),
+        f'{source["VPN_SOURCE_SERVICE_PREFIX"]}-': f"{config.service_prefix}-",
+        source["VPN_SOURCE_APP_NAME"]: config.app_name,
+    }
+    return replace_literals_once(text, replacements)
 
 
 def render_bundle(
     config: RuntimeConfig,
-    source: Mapping[str, str],
+    source: dict[str, str],
     output: Path,
     force: bool = False,
 ) -> None:
