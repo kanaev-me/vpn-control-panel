@@ -1,7 +1,9 @@
 name: Bootstrap clean public snapshot
 
 on:
-  push:
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -14,7 +16,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Download, verify and publish snapshot
         env:
-          SNAPSHOT_URL: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-4bb4-8246-a85c-4533a7dbaee3/raw?se=2026-07-26T18:04:01Z&sp=r&sv=2026-02-06&sr=b&scid=6b39d350-bd21-5b44-85f7-de3bcf0504c9&skoid=82a3371f-2f6c-4f81-8a78-2701b362559b&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-26T08:30:49Z&ske=2026-07-28T08:30:49Z&sks=b&skv=2026-02-06&sig=8voRmxJqQD7du23nUge84VSOoosyeKAIYrVn2FfXRCM%3D"
+          SNAPSHOT_URL: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-9fe4-8246-b1eb-6811604cd1b6/raw?se=2026-07-26T18:07:38Z&sp=r&sv=2026-02-06&sr=b&scid=88638a09-85b4-5f3b-8d1d-8c81e5f9f63a&skoid=82a3371f-2f6c-4f81-8a78-2701b362559b&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-26T06:13:17Z&ske=2026-07-28T06:13:17Z&sks=b&skv=2026-02-06&sig=yt5xjKTpQ9r2bBIFix59NH5NfZ8Te0O8/ZkkYFM2/3o%3D"
           SNAPSHOT_SHA256: "5b2f3d74cb176c16d13bf43a414f1af56883678205e02c09dedec6067571d81a"
         run: |
           set -euo pipefail
