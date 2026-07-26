@@ -1,0 +1,72 @@
+name: Bootstrap clean public snapshot
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Download, verify and publish snapshot
+        env:
+          SNAPSHOT_URL: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-4bb4-8246-a85c-4533a7dbaee3/raw?se=2026-07-26T18:04:01Z&sp=r&sv=2026-02-06&sr=b&scid=6b39d350-bd21-5b44-85f7-de3bcf0504c9&skoid=82a3371f-2f6c-4f81-8a78-2701b362559b&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-26T08:30:49Z&ske=2026-07-28T08:30:49Z&sks=b&skv=2026-02-06&sig=8voRmxJqQD7du23nUge84VSOoosyeKAIYrVn2FfXRCM%3D"
+          SNAPSHOT_SHA256: "5b2f3d74cb176c16d13bf43a414f1af56883678205e02c09dedec6067571d81a"
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          curl --fail --location --retry 3 --retry-all-errors "$SNAPSHOT_URL" -o "$work/snapshot.zip"
+          printf '%s  %s\n' "$SNAPSHOT_SHA256" "$work/snapshot.zip" | sha256sum -c -
+          mkdir "$work/snapshot"
+          unzip -q "$work/snapshot.zip" -d "$work/snapshot"
+
+          python3 - "$work/snapshot" <<'PY'
+          from pathlib import Path
+          import hashlib
+          import json
+          import sys
+
+          root = Path(sys.argv[1])
+          manifest_path = root / "PUBLIC_MANIFEST.json"
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          expected = {"PUBLIC_MANIFEST.json"}
+          for item in manifest["files"]:
+              relative = item["path"]
+              expected.add(relative)
+              path = root / relative
+              if not path.is_file():
+                  raise SystemExit(f"missing manifest file: {relative}")
+              data = path.read_bytes()
+              if len(data) != item["bytes"]:
+                  raise SystemExit(f"size mismatch: {relative}")
+              if hashlib.sha256(data).hexdigest() != item["sha256"]:
+                  raise SystemExit(f"hash mismatch: {relative}")
+          actual = {
+              str(path.relative_to(root))
+              for path in root.rglob("*")
+              if path.is_file()
+          }
+          if actual != expected:
+              raise SystemExit(
+                  f"snapshot contents differ: missing={sorted(expected-actual)}, extra={sorted(actual-expected)}"
+              )
+          print(f"verified_files={len(actual)}")
+          PY
+
+          make -C "$work/snapshot" check
+          find "$work/snapshot" -type d -name __pycache__ -prune -exec rm -rf '{}' +
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan public-main
+          git rm -rf . || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf '{}' +
+          cp -a "$work/snapshot"/. .
+          git add -A
+          git commit -m "Initial public release"
+          test "$(git rev-list --count HEAD)" = "1"
+          git push --force origin HEAD:main
