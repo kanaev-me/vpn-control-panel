@@ -34,6 +34,19 @@ def _read_bool(env: Mapping[str, str], name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be one of: {sorted(_TRUE | _FALSE)}")
 
 
+def _read_optional_positive_float(env: Mapping[str, str], name: str) -> float | None:
+    raw = env.get(name)
+    if raw is None or not str(raw).strip():
+        return None
+    try:
+        value = float(str(raw).strip())
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive number or empty") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive number or empty")
+    return value
+
+
 def _absolute_path(value: str, name: str) -> Path:
     path = Path(value)
     if not path.is_absolute():
@@ -63,6 +76,7 @@ class RuntimeConfig:
     ipsec_service: str
     l2tp_service: str
     default_access_group: str
+    channel_capacity_mbit: float | None
     pulse_endpoint_enabled: bool
     pulse_sync_enabled: bool
     pulse_contract: str
@@ -139,6 +153,7 @@ def load_runtime_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
         ipsec_service=_read(values, "VPN_IPSEC_SERVICE", "ipsec"),
         l2tp_service=_read(values, "VPN_L2TP_SERVICE", "xl2tpd"),
         default_access_group=_read(values, "VPN_DEFAULT_ACCESS_GROUP", "default"),
+        channel_capacity_mbit=_read_optional_positive_float(values, "VPN_CHANNEL_CAPACITY_MBIT"),
         pulse_endpoint_enabled=_read_bool(values, "VPN_PULSE_ENDPOINT_ENABLED", False),
         pulse_sync_enabled=_read_bool(values, "VPN_PULSE_SYNC_ENABLED", False),
         pulse_contract=_read(values, "VPN_PULSE_CONTRACT", "vpn-pulse-v1"),
