@@ -35,18 +35,41 @@ Edit `config/panel.env.local` and set at least:
 - `VPN_SERVICE_PREFIX`
 - `VPN_DEFAULT_ACCESS_GROUP`
 
+`VPN_CHANNEL_CAPACITY_MBIT` is optional. Leave it empty until you know the real
+usable uplink capacity. The panel does not invent or auto-detect this value.
+
 Do not commit the local environment file.
 
 ## Install
 
 ```bash
-sudo ./install.sh   --env config/panel.env.local   --admin-user admin
+sudo ./install.sh \
+  --env config/panel.env.local \
+  --admin-user admin
 ```
 
-The installer verifies the existing IKEv2 stack before making changes, installs
-panel dependencies and Caddy, creates a new SQLite database and owner account,
-installs systemd units, starts the panel and safe background timers, and checks
-`/health`.
+When no password file is supplied, the installer asks for the administrator
+password twice without echoing it and rejects a mismatch or a password shorter
+than 12 characters.
+
+Before reporting success, the installer verifies the existing IKEv2 stack,
+installs panel dependencies and Caddy, creates the SQLite database and owner
+account, installs systemd units, starts the panel and safe background timers,
+then performs a real administrator login and opens the protected home, access,
+channel and identity endpoints. It also rejects unknown service states on the
+initial dashboard.
+
+## Reset the administrator password
+
+```bash
+sudo ./install.sh reset-admin-password \
+  --env config/panel.env.local \
+  --admin-user admin
+```
+
+The reset command asks for the new password twice, backs up the SQLite database,
+replaces the password explicitly, invalidates old sessions, checks database
+integrity, restarts the panel and verifies the new login.
 
 ## Update
 
@@ -62,6 +85,10 @@ helper.
 ```bash
 make check
 ```
+
+The test suite includes a real local login against a materialized tenant panel,
+a deliberately corrupted optional JSON cache, honest channel defaults, live
+service-state fallback and service prefixes that themselves contain `vpn`.
 
 ## Security
 
