@@ -12,29 +12,34 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      SNAPSHOT_DIR: ${{ runner.temp }}/public-snapshot
+      SNAPSHOT_ZIP: ${{ runner.temp }}/public-snapshot.zip
+      SNAPSHOT_URL: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-6d10-8246-bf99-eb504a21f686/raw?se=2026-07-26T18:11:59Z&sp=r&sv=2026-02-06&sr=b&scid=857c38e4-64d8-5962-a53e-adacda2c67f9&skoid=82a3371f-2f6c-4f81-8a78-2701b362559b&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-26T08:08:07Z&ske=2026-07-28T08:08:07Z&sks=b&skv=2026-02-06&sig=AnFtxs1OSyCCupomd5PXffVz7R%2BGG/KdgciV3iEA%2BNI%3D"
+      SNAPSHOT_SHA256: "5b2f3d74cb176c16d13bf43a414f1af56883678205e02c09dedec6067571d81a"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Download, verify and publish snapshot
-        env:
-          SNAPSHOT_URL: "https://sdmntpritalynorth.oaiusercontent.com/files/00000000-9fe4-8246-b1eb-6811604cd1b6/raw?se=2026-07-26T18:07:38Z&sp=r&sv=2026-02-06&sr=b&scid=88638a09-85b4-5f3b-8d1d-8c81e5f9f63a&skoid=82a3371f-2f6c-4f81-8a78-2701b362559b&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-07-26T06:13:17Z&ske=2026-07-28T06:13:17Z&sks=b&skv=2026-02-06&sig=yt5xjKTpQ9r2bBIFix59NH5NfZ8Te0O8/ZkkYFM2/3o%3D"
-          SNAPSHOT_SHA256: "5b2f3d74cb176c16d13bf43a414f1af56883678205e02c09dedec6067571d81a"
+        with:
+          fetch-depth: 0
+
+      - name: Download snapshot
         run: |
           set -euo pipefail
-          work="$(mktemp -d)"
-          curl --fail --location --retry 3 --retry-all-errors "$SNAPSHOT_URL" -o "$work/snapshot.zip"
-          printf '%s  %s\n' "$SNAPSHOT_SHA256" "$work/snapshot.zip" | sha256sum -c -
-          mkdir "$work/snapshot"
-          unzip -q "$work/snapshot.zip" -d "$work/snapshot"
+          curl --fail --location --retry 3 --retry-all-errors "$SNAPSHOT_URL" -o "$SNAPSHOT_ZIP"
+          printf '%s  %s\n' "$SNAPSHOT_SHA256" "$SNAPSHOT_ZIP" | sha256sum -c -
+          mkdir -p "$SNAPSHOT_DIR"
+          unzip -q "$SNAPSHOT_ZIP" -d "$SNAPSHOT_DIR"
 
-          python3 - "$work/snapshot" <<'PY'
+      - name: Verify manifest
+        run: |
+          python3 - "$SNAPSHOT_DIR" <<'PY'
           from pathlib import Path
           import hashlib
           import json
           import sys
 
           root = Path(sys.argv[1])
-          manifest_path = root / "PUBLIC_MANIFEST.json"
-          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          manifest = json.loads((root / "PUBLIC_MANIFEST.json").read_text(encoding="utf-8"))
           expected = {"PUBLIC_MANIFEST.json"}
           for item in manifest["files"]:
               relative = item["path"]
@@ -47,27 +52,27 @@ jobs:
                   raise SystemExit(f"size mismatch: {relative}")
               if hashlib.sha256(data).hexdigest() != item["sha256"]:
                   raise SystemExit(f"hash mismatch: {relative}")
-          actual = {
-              str(path.relative_to(root))
-              for path in root.rglob("*")
-              if path.is_file()
-          }
+          actual = {str(path.relative_to(root)) for path in root.rglob("*") if path.is_file()}
           if actual != expected:
-              raise SystemExit(
-                  f"snapshot contents differ: missing={sorted(expected-actual)}, extra={sorted(actual-expected)}"
-              )
+              raise SystemExit(f"snapshot contents differ: missing={sorted(expected-actual)}, extra={sorted(actual-expected)}")
           print(f"verified_files={len(actual)}")
           PY
 
-          make -C "$work/snapshot" check
-          find "$work/snapshot" -type d -name __pycache__ -prune -exec rm -rf '{}' +
+      - name: Run public tests
+        run: |
+          set -euo pipefail
+          make -C "$SNAPSHOT_DIR" check
+          find "$SNAPSHOT_DIR" -type d -name __pycache__ -prune -exec rm -rf '{}' +
 
+      - name: Publish one clean root commit
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan public-main
           git rm -rf . || true
           find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf '{}' +
-          cp -a "$work/snapshot"/. .
+          cp -a "$SNAPSHOT_DIR"/. .
           git add -A
           git commit -m "Initial public release"
           test "$(git rev-list --count HEAD)" = "1"
