@@ -1,14 +1,14 @@
+import http.client
 import os
 import socket
 import subprocess
 import sys
-from http.cookiejar import CookieJar
 from pathlib import Path
 import tempfile
 import time
 import unittest
 from urllib.parse import urlencode
-from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
+from urllib.request import urlopen
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +20,23 @@ def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def local_request(port: int, method: str, path: str, *, body: bytes | None = None, cookie: str = ""):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
+    headers = {}
+    if body is not None:
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        headers["Content-Length"] = str(len(body))
+    if cookie:
+        headers["Cookie"] = cookie
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        payload = response.read()
+        return response.status, response.getheaders(), payload
+    finally:
+        connection.close()
 
 
 class MaterializeTenantPanelTests(unittest.TestCase):
@@ -177,29 +194,32 @@ class MaterializeTenantPanelTests(unittest.TestCase):
                 else:
                     self.fail(f"materialized panel health did not start: {last_error!r}")
 
-                opener = build_opener(HTTPCookieProcessor(CookieJar()))
-                request = Request(
-                    f"http://127.0.0.1:{port}/login",
-                    data=urlencode({"username": "admin", "password": password}).encode("utf-8"),
-                    method="POST",
-                )
-                with opener.open(request, timeout=20) as response:
-                    self.assertEqual(response.status, 200)
-                    body = response.read().decode("utf-8")
-                    self.assertIn("Example VPN", body)
-                    self.assertNotIn("s" + "oved", body.casefold())
-                    self.assertIn("Пропускная способность канала не задана", body)
-                    self.assertNotIn("250 Мбит/с", body)
-                    self.assertNotIn("panel unknown", body)
-                    self.assertIn(">panel<", body)
-                    self.assertIn(">caddy<", body)
-                    self.assertIn(">ipsec<", body)
+                login_body = urlencode({"username": "admin", "password": password}).encode("utf-8")
+                status, headers, _payload = local_request(port, "POST", "/login", body=login_body)
+                header_map = {key.casefold(): value for key, value in headers}
+                self.assertEqual(status, 303)
+                self.assertEqual(header_map.get("location"), "/")
+                cookie = header_map.get("set-cookie", "").split(";", 1)[0].strip()
+                self.assertTrue(cookie.startswith("vpn_vpn_session="))
+                self.assertGreaterEqual(len(cookie.split("=", 1)[1]), 32)
 
-                with opener.open(f"http://127.0.0.1:{port}/channel", timeout=20) as response:
-                    self.assertEqual(response.status, 200)
-                    body = response.read().decode("utf-8")
-                    self.assertIn("Пропускная способность канала не настроена", body)
-                    self.assertNotIn("250 Мбит/с", body)
+                status, _headers, payload = local_request(port, "GET", "/", cookie=cookie)
+                self.assertEqual(status, 200)
+                body = payload.decode("utf-8")
+                self.assertIn("Example VPN", body)
+                self.assertNotIn("s" + "oved", body.casefold())
+                self.assertIn("Пропускная способность канала не настроена", body)
+                self.assertNotIn("250 Мбит/с", body)
+                self.assertNotIn("panel unknown", body)
+                self.assertIn(">panel<", body)
+                self.assertIn(">caddy<", body)
+                self.assertIn(">ipsec<", body)
+
+                status, _headers, payload = local_request(port, "GET", "/channel", cookie=cookie)
+                self.assertEqual(status, 200)
+                body = payload.decode("utf-8")
+                self.assertIn("Пропускная способность канала не настроена", body)
+                self.assertNotIn("250 Мбит/с", body)
             finally:
                 process.terminate()
                 try:
