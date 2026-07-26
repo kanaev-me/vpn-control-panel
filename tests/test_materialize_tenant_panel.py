@@ -39,7 +39,7 @@ class MaterializeTenantPanelTests(unittest.TestCase):
             text=True,
         )
 
-    def test_materialized_panel_is_compilable_and_tenant_neutral(self):
+    def test_materialized_panel_is_compilable_tenant_neutral_and_hardened(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "panel"
             self.materialize(output)
@@ -63,13 +63,20 @@ class MaterializeTenantPanelTests(unittest.TestCase):
             self.assertNotIn("со\u0301" + "вед", combined)
             self.assertIn("default_access_group", combined)
 
+            app_text = (output / "app.py").read_text(encoding="utf-8")
+            self.assertIn("live_state = service_state(key)", app_text)
+            self.assertIn("Пропускная способность канала не настроена", app_text)
+            self.assertIn("except Exception:\n        metrics = {}", app_text)
+            self.assertNotIn('metrics.get("capacity_mbit") or 250', app_text)
+            self.assertNotIn('or metrics.get("capacity_mbit") or 250', app_text)
+
             subprocess.run(
                 [sys.executable, "-m", "compileall", "-q", str(output)],
                 cwd=ROOT,
                 check=True,
             )
 
-    def test_materialized_panel_starts_and_accepts_clean_admin_login(self):
+    def test_materialized_panel_starts_accepts_login_and_survives_bad_optional_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             output = root / "panel"
@@ -99,10 +106,28 @@ class MaterializeTenantPanelTests(unittest.TestCase):
                 text=True,
             )
 
+            status_dir = root / "status"
+            status_dir.mkdir()
+            (status_dir / "channel-metrics.json").write_text(
+                "{}\n{}\n", encoding="utf-8"
+            )
+
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            fake_systemctl = fake_bin / "systemctl"
+            fake_systemctl.write_text(
+                "#!/bin/sh\n"
+                "if [ \"${1:-}\" = is-active ]; then echo active; exit 0; fi\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            fake_systemctl.chmod(0o755)
+
             port = free_port()
             env = os.environ.copy()
             env.update(
                 {
+                    "PATH": str(fake_bin) + os.pathsep + env.get("PATH", ""),
                     "VPN_APP_NAME": "Example VPN",
                     "VPN_BRAND_NAME": "Example",
                     "VPN_PUBLIC_DOMAIN": "vpn.example.test",
@@ -112,12 +137,15 @@ class MaterializeTenantPanelTests(unittest.TestCase):
                     "VPN_PANEL_APP_DIR": str(output),
                     "VPN_PANEL_DB_PATH": str(db_path),
                     "VPN_PANEL_ACTION_LOG": str(root / "actions.log"),
-                    "VPN_PANEL_STATUS_DIR": str(root / "status"),
+                    "VPN_PANEL_STATUS_DIR": str(status_dir),
                     "VPN_PANEL_INSTRUCTIONS_DIR": str(root / "instructions"),
                     "VPN_PANEL_CACHE_DIR": str(root / "cache"),
                     "VPN_IKEV2_SCRIPT": str(root / "ikev2.sh"),
                     "VPN_CERT_DB": "sql:/nonexistent",
                     "VPN_PANEL_SERVICE": "example-vpn-panel",
+                    "VPN_CADDY_SERVICE": "caddy",
+                    "VPN_IPSEC_SERVICE": "ipsec",
+                    "VPN_L2TP_SERVICE": "xl2tpd",
                     "VPN_DEFAULT_ACCESS_GROUP": "example",
                     "VPN_PULSE_ENDPOINT_ENABLED": "0",
                     "VPN_PULSE_SYNC_ENABLED": "0",
@@ -160,6 +188,18 @@ class MaterializeTenantPanelTests(unittest.TestCase):
                     body = response.read().decode("utf-8")
                     self.assertIn("Example VPN", body)
                     self.assertNotIn("s" + "oved", body.casefold())
+                    self.assertIn("Пропускная способность канала не задана", body)
+                    self.assertNotIn("250 Мбит/с", body)
+                    self.assertNotIn("panel unknown", body)
+                    self.assertIn(">panel<", body)
+                    self.assertIn(">caddy<", body)
+                    self.assertIn(">ipsec<", body)
+
+                with opener.open(f"http://127.0.0.1:{port}/channel", timeout=20) as response:
+                    self.assertEqual(response.status, 200)
+                    body = response.read().decode("utf-8")
+                    self.assertIn("Пропускная способность канала не настроена", body)
+                    self.assertNotIn("250 Мбит/с", body)
             finally:
                 process.terminate()
                 try:
