@@ -14,12 +14,31 @@ class CleanServerInstallerTests(unittest.TestCase):
         subprocess.run(["bash", "-n", str(ENTRYPOINT)], check=True)
         subprocess.run(["bash", "-n", str(INSTALLER)], check=True)
 
-    def test_entrypoint_delegates_to_clean_installer(self):
+    def test_entrypoint_delegates_to_clean_installer_and_has_password_recovery(self):
         text = ENTRYPOINT.read_text(encoding="utf-8")
         self.assertIn("scripts/install-clean-server.sh", text)
         self.assertIn('"$@"', text)
         self.assertIn("Panel database already exists", text)
         self.assertIn("deploy-source.sh", text)
+        self.assertIn("Repeat panel administrator password", text)
+        self.assertIn("Passwords do not match", text)
+        self.assertIn("reset-admin-password", text)
+        self.assertIn("--replace-existing", text)
+        self.assertIn("DELETE FROM panel_sessions", text)
+        self.assertIn("before-password-reset", text)
+
+    def test_entrypoint_verifies_real_login_and_protected_pages(self):
+        text = ENTRYPOINT.read_text(encoding="utf-8")
+        self.assertIn('base + "/login"', text)
+        self.assertIn('("/access", "Доступ")', text)
+        self.assertIn('("/channel", "Канал")', text)
+        self.assertIn('base + "/api/me"', text)
+        self.assertIn("administrator_login=ok", text)
+        self.assertIn("protected_pages=ok", text)
+        self.assertIn("dashboard_defaults=ok", text)
+        self.assertIn("panel unknown", text)
+        self.assertIn("caddy unknown", text)
+        self.assertIn("ipsec unknown", text)
 
     def test_entrypoint_refuses_existing_database_before_install(self):
         with tempfile.TemporaryDirectory() as tmp:
