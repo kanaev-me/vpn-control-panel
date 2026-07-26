@@ -132,6 +132,8 @@ def harden_public_app(path: Path) -> None:
     current = f(current_raw)
 
     capacity_raw = metrics.get("capacity_mbit")
+    if capacity_raw in (None, "", 0, "0"):
+        capacity_raw = CONFIG.channel_capacity_mbit
     capacity_known = capacity_raw not in (None, "", 0, "0")
     cap = f(capacity_raw) if capacity_known else 0.0
     capacity_known = capacity_known and cap > 0
@@ -211,7 +213,7 @@ def harden_public_app(path: Path) -> None:
     else:
         status, status_cls, note = "Свободно", "ok", "Канал работает с хорошим запасом."
 ''',
-        '''    capacity_raw = hist.get("capacity_mbit") or metrics.get("capacity_mbit")
+        '''    capacity_raw = hist.get("capacity_mbit") or metrics.get("capacity_mbit") or CONFIG.channel_capacity_mbit
     capacity = fnum(capacity_raw)
     capacity_known = capacity_raw not in (None, "", 0, "0") and capacity > 0
     current = fnum(metrics.get("current_mbps") or day.get("current_mbps") or (hist.get("last") or {}).get("current_mbps"))
