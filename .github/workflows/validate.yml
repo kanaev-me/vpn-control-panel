@@ -11,8 +11,34 @@ jobs:
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      failure_tail: ${{ steps.check.outputs.failure_tail }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - run: make check
+      - id: check
+        shell: bash
+        run: |
+          set +e
+          make check > /tmp/make-check.log 2>&1
+          rc=$?
+          cat /tmp/make-check.log
+          tail -n 80 /tmp/make-check.log | base64 -w0 > /tmp/failure-tail.b64
+          echo "failure_tail=$(cat /tmp/failure-tail.b64)" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+
+  report:
+    needs: checks
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Show make check tail
+        env:
+          FAILURE_TAIL: ${{ needs.checks.outputs.failure_tail }}
+        run: |
+          if [ -n "$FAILURE_TAIL" ]; then
+            printf '%s' "$FAILURE_TAIL" | base64 -d
+          else
+            echo 'No failure tail was returned.'
+          fi
