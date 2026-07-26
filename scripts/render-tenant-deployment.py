@@ -59,6 +59,7 @@ def load_source_layout(path: Path) -> dict[str, str]:
 
 
 def env_lines(config: RuntimeConfig) -> list[str]:
+    channel_capacity = "" if config.channel_capacity_mbit is None else str(config.channel_capacity_mbit)
     pairs = [
         ("VPN_APP_NAME", config.app_name),
         ("VPN_BRAND_NAME", config.brand_name),
@@ -79,6 +80,7 @@ def env_lines(config: RuntimeConfig) -> list[str]:
         ("VPN_IPSEC_SERVICE", config.ipsec_service),
         ("VPN_L2TP_SERVICE", config.l2tp_service),
         ("VPN_DEFAULT_ACCESS_GROUP", config.default_access_group),
+        ("VPN_CHANNEL_CAPACITY_MBIT", channel_capacity),
         ("VPN_PULSE_ENDPOINT_ENABLED", "1" if config.pulse_endpoint_enabled else "0"),
         ("VPN_PULSE_SYNC_ENABLED", "1" if config.pulse_sync_enabled else "0"),
         ("VPN_PULSE_CONTRACT", config.pulse_contract),
@@ -179,6 +181,7 @@ def render_bundle(
                 f"service_prefix={config.service_prefix}",
                 f"app_dir={config.app_dir}",
                 f"status_dir={config.status_dir}",
+                f"channel_capacity_mbit={channel_capacity if (channel_capacity := config.channel_capacity_mbit) is not None else 'unset'}",
                 f"pulse_endpoint_enabled={int(config.pulse_endpoint_enabled)}",
                 f"pulse_sync_enabled={int(config.pulse_sync_enabled)}",
                 f"rendered_units={len(rendered_names)}",
