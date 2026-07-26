@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+panel.env
+*.env.local
+*.db
+*.sqlite*
+*.p12
+*.pfx
+*.mobileconfig
+*.sswan
+*.pem
+*.key

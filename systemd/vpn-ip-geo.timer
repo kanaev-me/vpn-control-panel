@@ -1,0 +1,11 @@
+[Unit]
+Description=Run VPN IP geo cache builder daily
+
+[Timer]
+OnCalendar=*-*-* 03:25:00
+AccuracySec=20min
+Persistent=true
+Unit=vpn-ip-geo.service
+
+[Install]
+WantedBy=timers.target

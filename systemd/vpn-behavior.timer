@@ -1,0 +1,11 @@
+[Unit]
+Description=Run VPN behavior aggregate builder hourly
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=5min
+Persistent=true
+Unit=vpn-behavior.service
+
+[Install]
+WantedBy=timers.target

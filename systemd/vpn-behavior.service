@@ -1,0 +1,9 @@
+[Unit]
+Description=VPN behavior aggregate builder
+After=vpn-panel.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vpn-panel
+ExecStart=/usr/bin/python3 /opt/vpn-panel/behavior_build.py
+Nice=10

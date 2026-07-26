@@ -1,0 +1,11 @@
+[Unit]
+Description=Run VPN behavior smart matches builder hourly
+
+[Timer]
+OnCalendar=*-*-* *:05:00
+AccuracySec=5min
+Persistent=true
+Unit=vpn-behavior-matches.service
+
+[Install]
+WantedBy=timers.target

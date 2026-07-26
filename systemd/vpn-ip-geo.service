@@ -1,0 +1,12 @@
+[Unit]
+Description=VPN IP geo cache builder
+After=network-online.target vpn-behavior.service vpn-behavior-matches.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vpn-panel
+Environment=GEO_LIMIT=100
+Environment=GEO_STALE_DAYS=30
+ExecStart=/usr/bin/python3 /opt/vpn-panel/ip_geo_build.py
+Nice=10

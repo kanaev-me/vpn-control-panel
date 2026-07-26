@@ -1,0 +1,7 @@
+[Unit]
+Description=VPN sync behavior last_seen from live sessions
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vpn-panel
+ExecStart=/usr/bin/python3 /opt/vpn-panel/lastseen_sync.py

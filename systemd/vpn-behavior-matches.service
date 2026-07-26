@@ -1,0 +1,9 @@
+[Unit]
+Description=VPN behavior smart matches builder
+After=vpn-behavior.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vpn-panel
+ExecStart=/usr/bin/python3 /opt/vpn-panel/behavior_matches_build.py
+Nice=10
