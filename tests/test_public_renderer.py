@@ -68,6 +68,22 @@ class PublicRendererTests(unittest.TestCase):
             self.assertIn("EnvironmentFile=/opt/nuova-vpn-panel/panel.env", unit)
             self.assertIn("ExecStart=/usr/bin/python3 /opt/nuova-vpn-panel/app.py", unit)
 
+            background_units = (
+                "nuova-vpn-behavior.service",
+                "nuova-vpn-behavior-matches.service",
+                "nuova-vpn-ip-geo.service",
+                "nuova-vpn-lastseen-sync.service",
+            )
+            for unit_name in background_units:
+                with self.subTest(unit=unit_name):
+                    background = (output / "systemd" / unit_name).read_text(encoding="utf-8")
+                    self.assertIn("WorkingDirectory=/opt/nuova-vpn-panel", background)
+                    self.assertIn(
+                        "EnvironmentFile=/opt/nuova-vpn-panel/panel.env",
+                        background,
+                    )
+                    self.assertNotIn("/opt/vpn-panel", background)
+
             panel_env = (output / "panel.env").read_text(encoding="utf-8")
             self.assertIn("VPN_CHANNEL_CAPACITY_MBIT=500.0", panel_env)
             self.assertIn("channel_capacity_mbit=500.0", (output / "MANIFEST.txt").read_text(encoding="utf-8"))
