@@ -44,6 +44,15 @@ class RuntimeConfigDomainTests(unittest.TestCase):
                 ):
                     load_runtime_config({"VPN_PUBLIC_DOMAIN": value})
 
+    def test_rejects_non_finite_channel_capacity(self):
+        for value in ("nan", "inf", "-inf", "0", "-1", "not-a-number"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "VPN_CHANNEL_CAPACITY_MBIT must be a positive finite number or empty",
+                ):
+                    load_runtime_config({"VPN_CHANNEL_CAPACITY_MBIT": value})
+
 
 if __name__ == "__main__":
     unittest.main()
