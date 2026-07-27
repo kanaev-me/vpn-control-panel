@@ -62,6 +62,7 @@ from access_passport_pipeline import run_access_passport_pipeline
 from pulse_status import build_pulse_status
 from design_v2 import design_v2_css
 from runtime_config import CONFIG
+from dashboard_status import normalize_dashboard_data
 
 APP_NAME = CONFIG.app_name
 BRAND_NAME = CONFIG.brand_name
@@ -4021,9 +4022,9 @@ def home_overview_page(user=None):
     services = sd.get("services") or {}
     service_pairs = (
         (PANEL_SERVICE_NAME, "panel"),
-        ("caddy", "caddy"),
-        ("ipsec", "ipsec"),
-        ("xl2tpd", "xl2tpd"),
+        (CADDY_SERVICE_NAME, "caddy"),
+        (IPSEC_SERVICE_NAME, "ipsec"),
+        (L2TP_SERVICE_NAME, "xl2tpd"),
     )
     service_bad = []
     chips = ""
@@ -5121,23 +5122,29 @@ def support_read_file(base, filename, fallback="Файл пока не сфор�
         return fallback + "\n\nerror=" + repr(e) + "\n"
 
 def support_dashboard_data():
+    raw_data = {}
     try:
         import json as _json
         raw = support_read_file(SUPPORT_STATUS_DIR, "dashboard.json", "{}")
-        return _json.loads(raw)
-    except Exception as e:
-        return {
-            "generated_at": "",
-            "status": "bad",
-            "reasons": ["dashboard_json_error", repr(e)],
-            "services": {},
-            "pluto": {},
-            "active_now": None,
-            "auth_fail_count_30m": None,
-            "old_profile_clients_2h": None,
-            "possible_multi_device_clients_2h": None,
-            "active_networks": [],
-        }
+        loaded = _json.loads(raw)
+        if isinstance(loaded, dict):
+            raw_data = loaded
+    except Exception:
+        # dashboard.json is optional enrichment. Live systemd state remains the
+        # source of truth, so a missing or malformed artifact must not turn every
+        # healthy service red.
+        raw_data = {}
+
+    return normalize_dashboard_data(
+        raw_data,
+        service_names=(
+            PANEL_SERVICE_NAME,
+            CADDY_SERVICE_NAME,
+            IPSEC_SERVICE_NAME,
+            L2TP_SERVICE_NAME,
+        ),
+        service_state=service_state,
+    )
 
 def support_status_label(status):
     if status == "ok":

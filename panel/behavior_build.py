@@ -95,7 +95,20 @@ def main():
     try:
         con.row_factory = sqlite3.Row
 
-        required = ["vpn_sessions", "ip_asn_cache"]
+        # A clean panel may not have resolved any remote IP yet. Keep the
+        # provider cache available as a normal empty input instead of failing the
+        # hourly behavior job before the first VPN connection is observed.
+        con.execute("""
+            create table if not exists ip_asn_cache (
+                ip text primary key,
+                asn text,
+                provider text,
+                label text,
+                updated_at integer not null default 0
+            )
+        """)
+
+        required = ["vpn_sessions"]
         missing = [t for t in required if not table_exists(con, t)]
         if missing:
             raise SystemExit("Missing tables: " + ", ".join(missing))

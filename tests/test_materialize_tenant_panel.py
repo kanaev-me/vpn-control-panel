@@ -81,7 +81,9 @@ class MaterializeTenantPanelTests(unittest.TestCase):
             self.assertIn("default_access_group", combined)
 
             app_text = (output / "app.py").read_text(encoding="utf-8")
-            self.assertIn("live_state = service_state(key)", app_text)
+            self.assertTrue((output / "dashboard_status.py").is_file())
+            self.assertIn("normalize_dashboard_data(", app_text)
+            self.assertIn("service_state=service_state", app_text)
             self.assertIn("Пропускная способность канала не настроена", app_text)
             self.assertIn("except Exception:\n        metrics = {}", app_text)
             self.assertNotIn('metrics.get("capacity_mbit") or 250', app_text)

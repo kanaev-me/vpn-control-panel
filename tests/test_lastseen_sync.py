@@ -21,6 +21,10 @@ class LastseenSyncTests(unittest.TestCase):
                 "VPN_PANEL_STATUS_DIR": str(db_path.parent / "status"),
                 "VPN_PANEL_INSTRUCTIONS_DIR": str(db_path.parent / "instructions"),
                 "VPN_PANEL_CACHE_DIR": str(db_path.parent / "cache"),
+                # These tests cover behavior-table synchronization in isolation.
+                # Live Libreswan parsing has its own unit tests and stays enabled
+                # by default in the installed systemd service.
+                "VPN_SKIP_LIVE_SESSION_COLLECTION": "1",
             }
         )
         return subprocess.run(
@@ -40,6 +44,7 @@ class LastseenSyncTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("vpn_sessions_missing=1", result.stdout)
+            self.assertIn("live_connections: 0", result.stdout)
             self.assertIn("latest_clients: 0", result.stdout)
 
     def test_empty_vpn_sessions_table_is_clean_noop(self):
@@ -58,6 +63,7 @@ class LastseenSyncTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn("vpn_sessions_missing=1", result.stdout)
+            self.assertIn("live_connections: 0", result.stdout)
             self.assertIn("latest_clients: 0", result.stdout)
             self.assertIn("summary_updates: 0", result.stdout)
             self.assertIn("place_updates: 0", result.stdout)

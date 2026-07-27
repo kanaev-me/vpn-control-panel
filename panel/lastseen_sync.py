@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
-import sqlite3, time, datetime
+import datetime
+import os
+import sqlite3
+import time
 
+from live_session_collector import collect_live_sessions
 from runtime_config import CONFIG
+
+
+def _live_collection_enabled() -> bool:
+    value = str(os.environ.get("VPN_SKIP_LIVE_SESSION_COLLECTION", "") or "").strip().lower()
+    return value not in {"1", "true", "yes", "on"}
 
 
 def main():
     DB = str(CONFIG.db_path)
     NOW = int(time.time())
+    live_connections = collect_live_sessions() if _live_collection_enabled() else 0
 
     def ts(v):
         if v is None or v == "":
@@ -37,6 +47,7 @@ def main():
             # A new panel may not have collected any live-session data yet.
             # This is a normal empty state, not a failed background job.
             print("vpn_sessions_missing=1")
+            print("live_connections:", live_connections)
             print("latest_clients: 0")
             print("summary_updates: 0")
             print("place_updates: 0")
@@ -106,6 +117,7 @@ def main():
 
         con.commit()
 
+        print("live_connections:", live_connections)
         print("latest_clients:", len(latest_client))
         print("summary_updates:", summary_updates)
         print("place_updates:", place_updates)
