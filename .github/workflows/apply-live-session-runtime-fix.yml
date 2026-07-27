@@ -38,12 +38,12 @@ jobs:
           if-no-files-found: error
       - name: Commit transformed sources
         run: |
-          if git diff --quiet -- panel/app.py panel/behavior_build.py; then
+          if git diff --quiet -- panel/app.py panel/behavior_build.py scripts/materialize-tenant-panel.py; then
             echo "runtime sources already transformed"
             exit 0
           fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add panel/app.py panel/behavior_build.py
+          git add panel/app.py panel/behavior_build.py scripts/materialize-tenant-panel.py
           git commit -m "Use live service state and bootstrap behavior inputs"
           git push origin HEAD:agent/collect-live-vpn-sessions
