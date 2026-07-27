@@ -8,9 +8,10 @@ usage() {
   cat <<'EOF'
 Usage: sudo ./scripts/deploy-source.sh --env PATH
 
-Deploy materialized panel sources using an explicit tenant configuration.
-The command requires an existing hwdsl2 IKEv2 installation and never deploys
-or replaces its database, certificates, profiles, keys or helper script.
+Deploy materialized panel sources and rendered tenant systemd units using an
+explicit tenant configuration. The command requires an existing hwdsl2 IKEv2
+installation and never deploys or replaces its database, certificates,
+profiles, keys or helper script.
 EOF
 }
 
@@ -111,19 +112,38 @@ python3 "$ROOT/scripts/materialize-tenant-panel.py" \
 STAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP_ROOT="$APP_DIR/.deploy-backups"
 BACKUP_DIR="$BACKUP_ROOT/$STAMP"
+SYSTEMD_BACKUP_DIR="$BACKUP_DIR/systemd"
 install -d -m 0755 "$APP_DIR"
-install -d -m 0700 "$BACKUP_ROOT" "$BACKUP_DIR"
+install -d -m 0700 "$BACKUP_ROOT" "$BACKUP_DIR" "$SYSTEMD_BACKUP_DIR"
 
 for path in "$APP_DIR"/*.py "$APP_DIR"/*.sh "$APP_DIR/panel.env"; do
   [[ -e "$path" ]] || continue
   cp -a "$path" "$BACKUP_DIR/"
 done
 
+for unit in "$STAGE/rendered/systemd/"*.service "$STAGE/rendered/systemd/"*.timer; do
+  [[ -f "$unit" ]] || continue
+  target="/etc/systemd/system/$(basename "$unit")"
+  if [[ -e "$target" ]]; then
+    cp -a "$target" "$SYSTEMD_BACKUP_DIR/"
+  fi
+done
+
 install -m 0755 "$STAGE/panel/"*.py "$APP_DIR/"
 install -m 0755 "$STAGE/panel/"*.sh "$APP_DIR/" 2>/dev/null || true
 install -m 0600 "$STAGE/rendered/panel.env" "$APP_DIR/panel.env"
 
+for unit in "$STAGE/rendered/systemd/"*.service "$STAGE/rendered/systemd/"*.timer; do
+  [[ -f "$unit" ]] || continue
+  install -m 0644 "$unit" "/etc/systemd/system/$(basename "$unit")"
+done
+
 python3 -m compileall -q "$APP_DIR"
+systemctl daemon-reload
+while IFS= read -r timer; do
+  [[ -n "$timer" ]] || continue
+  systemctl enable --now "$timer"
+done < "$STAGE/rendered/ENABLE.txt"
 systemctl restart "$PANEL_SERVICE"
 
 HEALTH_HOST="$PANEL_HOST"
@@ -132,5 +152,5 @@ case "$HEALTH_HOST" in
 esac
 curl -fsS "http://${HEALTH_HOST}:${PANEL_PORT}/health" >/dev/null
 
-printf 'deploy OK; app_dir=%s; service=%s; backup=%s; vpn_prerequisites=verified\n' \
+printf 'deploy OK; app_dir=%s; service=%s; backup=%s; systemd_units=updated; vpn_prerequisites=verified\n' \
   "$APP_DIR" "$PANEL_SERVICE" "$BACKUP_DIR"

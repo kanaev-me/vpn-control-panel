@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/vpn-panel
+EnvironmentFile=/opt/vpn-panel/panel.env
 Environment=GEO_LIMIT=100
 Environment=GEO_STALE_DAYS=30
 ExecStart=/usr/bin/python3 /opt/vpn-panel/ip_geo_build.py
