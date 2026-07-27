@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply exact, reviewable edits to the large app and behavior builder."""
+"""Apply exact, reviewable edits to the large app and runtime builders."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "panel" / "app.py"
 BEHAVIOR = ROOT / "panel" / "behavior_build.py"
+MATERIALIZER = ROOT / "scripts" / "materialize-tenant-panel.py"
 
 
 def replace_once(text: str, old: str, new: str, *, label: str) -> str:
@@ -134,9 +135,66 @@ def patch_behavior() -> None:
     BEHAVIOR.write_text(text, encoding="utf-8")
 
 
+def patch_materializer() -> None:
+    text = MATERIALIZER.read_text(encoding="utf-8")
+
+    old = '''    text = _replace_once(
+        text,
+        ''' + "'''" + '''    services = sd.get("services") or {}
+    service_pairs = (
+        (PANEL_SERVICE_NAME, "panel"),
+        ("caddy", "caddy"),
+        ("ipsec", "ipsec"),
+        ("xl2tpd", "xl2tpd"),
+    )
+    service_bad = []
+    chips = ""
+    for key, label in service_pairs:
+        val = services.get(key, "unknown")
+        ok = val == "active"
+''' + "'''" + ''',
+        ''' + "'''" + '''    services = dict(sd.get("services") or {})
+    service_pairs = (
+        (PANEL_SERVICE_NAME, "panel"),
+        (CADDY_SERVICE_NAME, "caddy"),
+        (IPSEC_SERVICE_NAME, "ipsec"),
+        (L2TP_SERVICE_NAME, "xl2tpd"),
+    )
+    for key, _label in service_pairs:
+        live_state = service_state(key)
+        if live_state and live_state != "unknown":
+            services[key] = live_state
+        elif not services.get(key):
+            services[key] = "unknown"
+
+    service_bad = []
+    chips = ""
+    for key, label in service_pairs:
+        val = services.get(key, "unknown")
+        ok = val == "active"
+''' + "'''" + ''',
+        "live service status fallback",
+    )
+
+'''
+    new = '''    # Live service truth is already normalized in the source app. Keeping a
+    # second textual patch here would make materialization depend on the old UI
+    # implementation and would fail after legitimate source refactors.
+
+'''
+    text = replace_once(
+        text,
+        old,
+        new,
+        label="remove obsolete materializer service patch",
+    )
+    MATERIALIZER.write_text(text, encoding="utf-8")
+
+
 def main() -> None:
     patch_app()
     patch_behavior()
+    patch_materializer()
     print("live_session_runtime_fix=applied")
 
 
