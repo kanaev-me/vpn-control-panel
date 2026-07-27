@@ -1,0 +1,35 @@
+name: apply session revocation fix
+
+on:
+  push:
+    branches:
+      - agent/revoke-sessions-on-password-reset
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: agent/revoke-sessions-on-password-reset
+          fetch-depth: 0
+      - name: Apply exact source transformation
+        run: python3 scripts/apply-session-revocation-fix.py
+      - name: Validate transformed repository
+        run: make check
+      - name: Commit source and tests
+        run: |
+          if git diff --quiet -- scripts/bootstrap-panel-admin.py tests/test_bootstrap_panel_admin.py; then
+            echo "No generated change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/bootstrap-panel-admin.py tests/test_bootstrap_panel_admin.py
+          git commit -m "Revoke sessions when replacing a password"
+          git push origin HEAD:agent/revoke-sessions-on-password-reset
