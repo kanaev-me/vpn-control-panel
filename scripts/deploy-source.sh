@@ -150,7 +150,22 @@ HEALTH_HOST="$PANEL_HOST"
 case "$HEALTH_HOST" in
   0.0.0.0|::|'[::]') HEALTH_HOST=127.0.0.1 ;;
 esac
-curl -fsS "http://${HEALTH_HOST}:${PANEL_PORT}/health" >/dev/null
+HEALTH_URL="http://${HEALTH_HOST}:${PANEL_PORT}/health"
+HEALTH_OK=0
+for _attempt in $(seq 1 30); do
+  if curl -fsS --max-time 2 "$HEALTH_URL" >/dev/null 2>&1; then
+    HEALTH_OK=1
+    break
+  fi
+  sleep 1
+done
 
-printf 'deploy OK; app_dir=%s; service=%s; backup=%s; systemd_units=updated; vpn_prerequisites=verified\n' \
+if [[ "$HEALTH_OK" -ne 1 ]]; then
+  echo "Panel health check failed after 30 seconds: $HEALTH_URL" >&2
+  systemctl status "$PANEL_SERVICE" --no-pager -l >&2 || true
+  journalctl -u "$PANEL_SERVICE" -n 80 --no-pager >&2 || true
+  exit 1
+fi
+
+printf 'deploy OK; app_dir=%s; service=%s; backup=%s; systemd_units=updated; vpn_prerequisites=verified; health=ok\n' \
   "$APP_DIR" "$PANEL_SERVICE" "$BACKUP_DIR"
