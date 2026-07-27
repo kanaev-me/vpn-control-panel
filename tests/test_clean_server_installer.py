@@ -100,6 +100,18 @@ class CleanServerInstallerTests(unittest.TestCase):
         self.assertNotIn("systemctl restart ipsec", lowered)
         self.assertNotIn("systemctl restart xl2tp", lowered)
 
+    def test_source_deploy_waits_for_panel_health_and_prints_diagnostics(self):
+        text = DEPLOY.read_text(encoding="utf-8")
+        restart_at = text.index('systemctl restart "$PANEL_SERVICE"')
+        wait_at = text.index("for _attempt in $(seq 1 30)")
+        self.assertLess(restart_at, wait_at)
+        self.assertIn('curl -fsS --max-time 2 "$HEALTH_URL"', text)
+        self.assertIn("sleep 1", text)
+        self.assertIn("Panel health check failed after 30 seconds", text)
+        self.assertIn('systemctl status "$PANEL_SERVICE" --no-pager -l', text)
+        self.assertIn('journalctl -u "$PANEL_SERVICE" -n 80 --no-pager', text)
+        self.assertIn("health=ok", text)
+
     def test_vpn_preflight_runs_before_any_package_or_panel_mutation(self):
         text = INSTALLER.read_text(encoding="utf-8")
         preflight = text.index("check-vpn-prerequisites.py")
