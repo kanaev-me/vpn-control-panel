@@ -13,7 +13,7 @@ import copy
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 from provider_labels import normalize_profile_data as _vpn_provider_norm_data_v2
 from request_context import get_current_user as request_current_user
@@ -119,6 +119,19 @@ def get_ipsec_status():
 
 def esc(x):
     return html.escape(str(x), quote=True)
+
+def query_url(path, **params):
+    query = "&".join(
+        f"{quote(str(name), safe='')}={quote(str(value or ''), safe='')}"
+        for name, value in params.items()
+    )
+    return f"{path}?{query}" if query else str(path)
+
+def access_url(client):
+    return query_url("/access", client=client)
+
+def confirm_revoke_delete_url(client):
+    return query_url("/confirm-revoke-delete", client=client)
 
 def fmt_epoch(ts):
     if not ts:
@@ -2243,7 +2256,7 @@ def delete_access_result_page(client, ok, lines):
 
     passport_link = ""
     if not ok and client:
-        passport_link = f'<a class="softButton" href="/access?client={esc(client)}">Открыть паспорт доступа</a>'
+        passport_link = f'<a class="softButton" href="{esc(access_url(client))}">Открыть паспорт доступа</a>'
 
     css = """
 <style>
@@ -2328,7 +2341,7 @@ def create_access_result_page(client, ok, lines):
         """
         actions = f"""
             <div class="result-flow-actions">
-                <a class="primaryButton" href="/access?client={esc(client)}">Открыть паспорт доступа</a>
+                <a class="primaryButton" href="{esc(access_url(client))}">Открыть паспорт доступа</a>
                 <a class="softButton" href="/create-access">Создать ещё</a>
                 <a class="softButton" href="/access">К доступам</a>
             </div>
@@ -2568,7 +2581,7 @@ def confirm_revoke_delete_page(client):
     body = f"""
         {css}
         <section class="card delete-flow-card">
-            <a class="create-back-link" href="/access?client={esc(client)}">← В паспорт доступа</a>
+            <a class="create-back-link" href="{esc(access_url(client))}">← В паспорт доступа</a>
 
             <div>
                 <h2>Отключить и удалить</h2>
@@ -2593,7 +2606,7 @@ def confirm_revoke_delete_page(client):
                 <input class="textInput" name="confirm" autocomplete="off" placeholder="{esc(client)}" required>
                 <div class="delete-flow-actions">
                     <button class="dangerButton" type="submit">Отключить и удалить</button>
-                    <a class="softButton" href="/access?client={esc(client)}">Отмена</a>
+                    <a class="softButton" href="{esc(access_url(client))}">Отмена</a>
                 </div>
             </form>
         </section>
@@ -2811,7 +2824,7 @@ def _access_passport_base_page(client, user=None):
             <h2>Управление</h2>
             <p class="muted">Опасные действия требуют отдельного подтверждения точным именем доступа.</p>
             <p>
-                <a class="dangerButton" href="/confirm-revoke-delete?client={esc(client)}">Отключить и удалить</a>
+                <a class="dangerButton" href="{esc(confirm_revoke_delete_url(client))}">Отключить и удалить</a>
             </p>
         </section>
 
@@ -3394,7 +3407,7 @@ def access_device_rows_html():
     for line in active_multi[:10]:
         client = safe_client_name(line.split(":", 1)[0].strip())
         if client:
-            rows += f"<tr><td><span class='pill bad'>сейчас</span></td><td><a href='/access?client={esc(client)}'>{esc(client)}</a></td><td>одновременно активен с разных IP — проверить, не используется ли один конфиг на двух устройствах</td></tr>"
+            rows += f"<tr><td><span class='pill bad'>сейчас</span></td><td><a href='{esc(access_url(client))}'>{esc(client)}</a></td><td>одновременно активен с разных IP — проверить, не используется ли один конфиг на двух устройствах</td></tr>"
 
     for line in suspicious[:10]:
         client = safe_client_name(line.split(":", 1)[0].strip())
@@ -3404,14 +3417,14 @@ def access_device_rows_html():
             reason = _vpn_support_suspicion_detail(line)
         except Exception:
             reason = "возможный дубль устройства или разные сети"
-        rows += f"<tr><td><span class='pill warn'>проверить</span></td><td><a href='/access?client={esc(client)}'>{esc(client)}</a></td><td>{esc(reason)}</td></tr>"
+        rows += f"<tr><td><span class='pill warn'>проверить</span></td><td><a href='{esc(access_url(client))}'>{esc(client)}</a></td><td>{esc(reason)}</td></tr>"
 
     for line in old[:10]:
         client = safe_client_name(line.split(":", 1)[0].strip())
         if not client:
             continue
         detail = human_old_profile_detail(line)
-        rows += f"<tr><td><span class='pill warn'>старый профиль</span></td><td><a href='/access?client={esc(client)}'>{esc(client)}</a></td><td>{esc(detail)}</td></tr>"
+        rows += f"<tr><td><span class='pill warn'>старый профиль</span></td><td><a href='{esc(access_url(client))}'>{esc(client)}</a></td><td>{esc(detail)}</td></tr>"
 
     if not rows:
         rows = "<tr><td><span class='pill ok'>OK</span></td><td>Проблемных устройств нет</td><td>Старые профили и явные дубли за последнее окно не найдены</td></tr>"
@@ -3505,7 +3518,7 @@ def access_problem_cards_html():
 
         entries.append({
             "client": client,
-            "href": href or f"/access?client={esc(client)}",
+            "href": href or access_url(client),
             "reason": reason or "требует проверки",
             "level": level,
             "label": label,
@@ -3782,7 +3795,7 @@ def access_people_cards_html(items, user=None):
             </div>""" if connected and provider_html else ""
 
         return f"""
-          <a class="person-device {'is-online' if connected else ''}" href="/access?client={esc(d['client'])}">
+          <a class="person-device {'is-online' if connected else ''}" href="{esc(access_url(d['client']))}">
             <div class="person-device-main">
               <strong>{esc(d.get('device_label') or 'устройство')}</strong>
               <div class="person-device-client">{esc(d['client'])}</div>
@@ -3894,7 +3907,7 @@ def access_index_page(user=None):
 
         rows += (
             "<tr>"
-            f"<td><a href='/access?client={esc(name)}'>{esc(name)}</a></td>"
+            f"<td><a href='{esc(access_url(name))}'>{esc(name)}</a></td>"
             f"<td>{esc(group)}</td>"
             f"<td>{esc(status)}</td>"
             f"<td>{esc(online)}</td>"
@@ -4052,7 +4065,7 @@ def home_overview_page(user=None):
             client = safe_client_name(line.split(":", 1)[0].strip())
             if client:
                 checks += f"""
-  <a class="home-check-row warn" href="/access?client={esc(client)}">
+  <a class="home-check-row warn" href="{esc(access_url(client))}">
     <span class="pill warn">старый профиль</span>
     <strong>{esc(client)}</strong>
     <span class="muted">удалить старый профиль на устройстве</span>
@@ -7024,7 +7037,7 @@ class Handler(BaseHTTPRequestHandler):
 
             auth_set_client_meta(client, group_name, user)
             summary_cache_clear()
-            redirect_raw(self, f"/access?client={client}")
+            redirect_raw(self, access_url(client))
             return
 
         if path == "/create-access":
@@ -7705,7 +7718,6 @@ def _vpn_matches_examples_line_v1(examples_json):
 def access_matches_panel_html(client):
     """Shows smart related accesses in access passport."""
     import sqlite3 as _sqlite3
-    import urllib.parse as _urlparse
 
     client = safe_client_name(client or "")
     if not client:
@@ -7790,7 +7802,7 @@ def access_matches_panel_html(client):
         else:
             cls = "low"
 
-        href = "/access?client=" + _urlparse.quote(other)
+        href = access_url(other)
 
         mass_hint = ""
         if max_clients_on_ip >= 6:
@@ -8189,7 +8201,6 @@ def _vpn_networks_table_exists_v1(con, name):
 def networks_page_v1(user=None):
     import json as _json
     import sqlite3 as _sqlite3
-    import urllib.parse as _urlparse
     from collections import Counter as _Counter, defaultdict as _defaultdict
 
     user = user or {}
@@ -8268,7 +8279,7 @@ def networks_page_v1(user=None):
 
                 client_links = []
                 for c in clients[:12]:
-                    href = "/access?client=" + _urlparse.quote(c)
+                    href = access_url(c)
                     client_links.append(f'<a href="{esc(href)}">{esc(_vpn_networks_client_label_v1(meta, c))}</a>')
                 more = ""
                 if len(clients) > 12:
@@ -8331,8 +8342,8 @@ def networks_page_v1(user=None):
                     for p, c in list(providers.items())[:4]
                 ]) or "провайдеры не определены"
 
-                href_a = "/access?client=" + _urlparse.quote(a)
-                href_b = "/access?client=" + _urlparse.quote(b)
+                href_a = access_url(a)
+                href_b = access_url(b)
 
                 match_cards += f"""
                 <div class="match-row-v1 match-{esc(cls)}">
@@ -9888,7 +9899,6 @@ def _v4_badge(text, cls=""):
 
 def _v4_render_profile(client, user=None, old_html=""):
     import json as _json
-    import urllib.parse as _urlparse
 
     d = _v4_load_profile_data(client, old_html)
     client = d["client"]
@@ -9979,7 +9989,7 @@ def _v4_render_profile(client, user=None, old_html=""):
         for m in d["matches"]:
             r = m["row"]
             other = m["other"]
-            href = "/access?client=" + _urlparse.quote(other)
+            href = access_url(other)
             try:
                 providers = _json.loads(r["providers_json"] or "{}")
             except Exception:
