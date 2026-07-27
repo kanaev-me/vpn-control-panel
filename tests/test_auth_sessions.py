@@ -41,11 +41,17 @@ class AuthSessionTests(unittest.TestCase):
             (username, role, "Administrator", enabled),
         )
 
-    def add_session(self, session_id="session", username="admin", expires_at=101):
+    def add_session(
+        self,
+        session_id="session",
+        username="admin",
+        expires_at=101,
+        last_seen=1,
+    ):
         self.conn.execute(
             "insert into panel_sessions(session_id, username, created_at, last_seen, expires_at) "
             "values(?,?,?,?,?)",
-            (session_id, username, 1, 1, expires_at),
+            (session_id, username, 1, last_seen, expires_at),
         )
         self.conn.commit()
 
@@ -60,6 +66,35 @@ class AuthSessionTests(unittest.TestCase):
             "role": "owner",
             "display_name": "Administrator",
         })
+        self.assertEqual(
+            self.conn.execute(
+                "select last_seen from panel_sessions where session_id='session'"
+            ).fetchone(),
+            (100,),
+        )
+
+    def test_recent_session_resolution_avoids_redundant_sqlite_write(self):
+        self.add_user()
+        self.add_session(expires_at=1000, last_seen=95)
+        changes_before = self.conn.total_changes
+
+        user = resolve_session_record(self.conn, "session", now=100)
+
+        self.assertEqual(user["username"], "admin")
+        self.assertEqual(self.conn.total_changes, changes_before)
+        self.assertEqual(
+            self.conn.execute(
+                "select last_seen from panel_sessions where session_id='session'"
+            ).fetchone(),
+            (95,),
+        )
+
+    def test_stale_session_refreshes_last_seen_once_interval_elapsed(self):
+        self.add_user()
+        self.add_session(expires_at=1000, last_seen=40)
+
+        resolve_session_record(self.conn, "session", now=100)
+
         self.assertEqual(
             self.conn.execute(
                 "select last_seen from panel_sessions where session_id='session'"
