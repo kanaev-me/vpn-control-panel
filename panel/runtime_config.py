@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from ipaddress import ip_address
 from pathlib import Path
 import os
 import re
@@ -13,6 +14,7 @@ from typing import Mapping
 _TRUE = {"1", "true", "yes", "on", "enabled"}
 _FALSE = {"0", "false", "no", "off", "disabled"}
 _PREFIX_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,47}$")
+_DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 def _read(env: Mapping[str, str], name: str, default: str) -> str:
@@ -54,6 +56,29 @@ def _absolute_path(value: str, name: str) -> Path:
     return path
 
 
+def _normalize_public_domain(value: str) -> str:
+    raw = str(value or "").strip()
+    try:
+        domain = raw.encode("idna").decode("ascii").lower()
+    except UnicodeError as exc:
+        raise ValueError("VPN_PUBLIC_DOMAIN must be a DNS host name without scheme, path or port") from exc
+
+    labels = domain.split(".")
+    valid = (
+        1 < len(labels)
+        and len(domain) <= 253
+        and all(_DNS_LABEL_RE.fullmatch(label) for label in labels)
+    )
+    try:
+        is_ip_address = bool(domain and ip_address(domain))
+    except ValueError:
+        is_ip_address = False
+
+    if not valid or is_ip_address:
+        raise ValueError("VPN_PUBLIC_DOMAIN must be a DNS host name without scheme, path or port")
+    return domain
+
+
 @dataclass(frozen=True)
 class RuntimeConfig:
     app_name: str
@@ -93,9 +118,9 @@ def load_runtime_config(env: Mapping[str, str] | None = None) -> RuntimeConfig:
 
     app_name = _read(values, "VPN_APP_NAME", "VPN")
     brand_name = _read(values, "VPN_BRAND_NAME", "VPN")
-    public_domain = _read(values, "VPN_PUBLIC_DOMAIN", "vpn.example.invalid")
-    if any(ch.isspace() for ch in public_domain) or "." not in public_domain:
-        raise ValueError("VPN_PUBLIC_DOMAIN must be a DNS name")
+    public_domain = _normalize_public_domain(
+        _read(values, "VPN_PUBLIC_DOMAIN", "vpn.example.invalid")
+    )
 
     panel_host = _read(values, "VPN_PANEL_HOST", "127.0.0.1")
     port_raw = _read(values, "VPN_PANEL_PORT", "8711")
