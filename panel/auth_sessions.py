@@ -27,7 +27,7 @@ def prune_invalid_session_records(conn, *, now: int) -> int:
         """
         delete from panel_sessions
         where typeof(expires_at) != 'integer'
-           or expires_at < ?
+           or expires_at <= ?
            or not exists (
                 select 1
                 from panel_users pu
@@ -81,27 +81,25 @@ def resolve_session_record(conn, session_id: str, *, now: int) -> UserRecord | N
 
     row = conn.execute(
         """
-        select ps.username, pu.role, pu.display_name, ps.expires_at
+        select ps.username, trim(pu.role), pu.display_name
         from panel_sessions ps
         join panel_users pu
           on pu.username = ps.username
          and pu.is_enabled = 1
+         and coalesce(trim(pu.role), '') != ''
         where ps.session_id = ?
+          and typeof(ps.expires_at) = 'integer'
+          and ps.expires_at > ?
         """,
-        (session_id,),
+        (session_id, now),
     ).fetchone()
 
     if not row:
         delete_session_record(conn, session_id)
         return None
 
-    username, role, display_name, expires_at = row
-    try:
-        not_expired = int(expires_at or 0) >= now
-    except (TypeError, ValueError):
-        not_expired = False
-
-    if not username or not role or not not_expired:
+    username, role, display_name = row
+    if not username or not role:
         delete_session_record(conn, session_id)
         return None
 
