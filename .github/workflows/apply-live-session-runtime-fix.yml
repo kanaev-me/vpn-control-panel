@@ -23,7 +23,19 @@ jobs:
       - name: Apply exact runtime edits
         run: python3 scripts/apply-live-session-runtime-fix.py
       - name: Validate
-        run: make check
+        run: |
+          set +e
+          make check > check.log 2>&1
+          status=$?
+          cat check.log
+          exit "$status"
+      - name: Upload validation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-session-validation-log
+          path: check.log
+          if-no-files-found: error
       - name: Commit transformed sources
         run: |
           if git diff --quiet -- panel/app.py panel/behavior_build.py; then
