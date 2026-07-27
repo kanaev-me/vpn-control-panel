@@ -168,6 +168,10 @@ def bootstrap(
                 """,
                 (stored_hash, display_name or username, now, username),
             )
+            conn.execute(
+                "DELETE FROM panel_sessions WHERE username=?",
+                (username,),
+            )
         else:
             conn.execute(
                 """

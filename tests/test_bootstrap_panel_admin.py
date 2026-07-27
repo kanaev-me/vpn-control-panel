@@ -130,6 +130,47 @@ class BootstrapPanelAdminTests(unittest.TestCase):
             self.assertFalse(verify_password(first_password, replaced_hash))
             self.assertTrue(verify_password(second_password, replaced_hash))
 
+    def test_explicit_password_replacement_revokes_only_target_user_sessions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "panel.db"
+            first_file = root / "first-password"
+            second_file = root / "second-password"
+            first_file.write_text("correct horse battery staple\n", encoding="utf-8")
+            second_file.write_text("another deliberately strong password\n", encoding="utf-8")
+
+            self.run_bootstrap(db, first_file)
+            conn = sqlite3.connect(db)
+            try:
+                conn.executemany(
+                    "insert into panel_sessions "
+                    "(session_id, username, created_at, last_seen, expires_at) "
+                    "values(?,?,?,?,?)",
+                    (
+                        ("admin-session-a", "admin", 1, 1, 9999999999),
+                        ("admin-session-b", "admin", 2, 2, 9999999999),
+                        ("other-session", "other-user", 3, 3, 9999999999),
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            self.run_bootstrap(db, second_file, "--replace-existing")
+            conn = sqlite3.connect(db)
+            try:
+                admin_sessions = conn.execute(
+                    "select session_id from panel_sessions where username='admin'"
+                ).fetchall()
+                other_sessions = conn.execute(
+                    "select session_id from panel_sessions where username='other-user'"
+                ).fetchall()
+            finally:
+                conn.close()
+
+            self.assertEqual(admin_sessions, [])
+            self.assertEqual(other_sessions, [("other-session",)])
+
     def test_short_password_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
