@@ -12,6 +12,7 @@ from typing import Callable
 
 
 UserRecord = dict[str, str]
+SESSION_LAST_SEEN_WRITE_INTERVAL = 60
 
 
 def prune_invalid_session_records(conn, *, now: int) -> int:
@@ -81,7 +82,7 @@ def resolve_session_record(conn, session_id: str, *, now: int) -> UserRecord | N
 
     row = conn.execute(
         """
-        select ps.username, trim(pu.role), pu.display_name
+        select ps.username, trim(pu.role), pu.display_name, ps.last_seen
         from panel_sessions ps
         join panel_users pu
           on pu.username = ps.username
@@ -98,16 +99,24 @@ def resolve_session_record(conn, session_id: str, *, now: int) -> UserRecord | N
         delete_session_record(conn, session_id)
         return None
 
-    username, role, display_name = row
+    username, role, display_name, last_seen = row
     if not username or not role:
         delete_session_record(conn, session_id)
         return None
 
-    conn.execute(
-        "update panel_sessions set last_seen = ? where session_id = ?",
-        (now, session_id),
-    )
-    conn.commit()
+    try:
+        should_refresh_last_seen = int(last_seen or 0) <= (
+            now - SESSION_LAST_SEEN_WRITE_INTERVAL
+        )
+    except (TypeError, ValueError):
+        should_refresh_last_seen = True
+
+    if should_refresh_last_seen:
+        conn.execute(
+            "update panel_sessions set last_seen = ? where session_id = ?",
+            (now, session_id),
+        )
+        conn.commit()
 
     return {
         "username": username,
