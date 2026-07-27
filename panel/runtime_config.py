@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from ipaddress import ip_address
+from math import isfinite
 from pathlib import Path
 import os
 import re
@@ -43,9 +44,9 @@ def _read_optional_positive_float(env: Mapping[str, str], name: str) -> float | 
     try:
         value = float(str(raw).strip())
     except ValueError as exc:
-        raise ValueError(f"{name} must be a positive number or empty") from exc
-    if value <= 0:
-        raise ValueError(f"{name} must be a positive number or empty")
+        raise ValueError(f"{name} must be a positive finite number or empty") from exc
+    if not isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive finite number or empty")
     return value
 
 
